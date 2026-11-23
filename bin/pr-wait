@@ -1,0 +1,220 @@
+#!/bin/bash
+set -u -o pipefail
+
+usage="usage: pr-wait <pull-request-url> [--on EVENTS] [--match REGEX] [--minutes N] [--interval SECONDS]
+
+Waits until the pull request changes in a way you asked about, then prints what changed.
+
+  --on EVENTS    comma-separated events that end the wait (default: any)
+                   any           anything on the pull request changed
+                   checks-done   a check changed and no check is still running
+                   check-failed  a check failed
+                   review        a review was added or the review decision changed
+                   comment       the comment count changed (GitHub only)
+                   commit        the head commit changed
+                   conflict      merge conflicts or behind-base changed
+  --match REGEX  also end the wait when a new line of the report matches, for
+                 example 'review copilot'. Lines look like 'check NAME: SUCCESS',
+                 'review LOGIN: APPROVED' and 'comment count: 3'.
+
+A change of state (merged, closed, draft) always ends the wait."
+url=""
+minutes=110
+interval=60
+on=""
+match=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --on) on="$2"; shift 2 ;;
+    --match) match="$2"; shift 2 ;;
+    --minutes) minutes="$2"; shift 2 ;;
+    --interval) interval="$2"; shift 2 ;;
+    -h|--help) echo "$usage"; exit 0 ;;
+    *) url="$1"; shift ;;
+  esac
+done
+
+github_pattern='^https://github\.com/([^/]+)/([^/]+)/pull/([0-9]+)'
+azure_pattern='^https://dev\.azure\.com/([^/]+)/([^/]+)/_git/([^/]+)/pullrequest/([0-9]+)'
+
+github_snapshot() {
+  local repository="$1" number="$2"
+  ws gh pr view "$number" --repo "$repository" \
+    --json state,isDraft,headRefOid,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,reviews,comments |
+    jq -r '
+      def filled: if . == null or . == "" then empty else . end;
+      "state: \(.state)\(if .isDraft then " (draft)" else "" end)",
+      "head: \(.headRefOid[0:7])",
+      (if .mergeable == "CONFLICTING" then "conflicts: yes" else empty end),
+      (if .mergeStateStatus == "BEHIND" then "behind base: yes" else empty end),
+      "review decision: \((.reviewDecision | filled) // "none")",
+      (.statusCheckRollup // []
+        | map("check \(if (.workflowName // "") != "" then .workflowName + " / " else "" end)\(.name // .context): \((.conclusion | filled) // (.state | filled) // (.status | filled) // "PENDING")")
+        | sort | .[]),
+      (.reviews // [] | map("review \(.author.login): \(.state)") | .[]),
+      "comment count: \(.comments | length)"'
+}
+
+azure_snapshot() {
+  local organization="$1" number="$2"
+  ws az repos pr show --id "$number" --org "$organization" --output json |
+    jq -r '
+      "state: \(.status)\(if .isDraft then " (draft)" else "" end)",
+      "head: \(.lastMergeSourceCommit.commitId[0:7])",
+      (if .mergeStatus == "conflicts" then "conflicts: yes" else empty end),
+      (.reviewers // [] | map("review \(.displayName): vote \(.vote)") | sort | .[])' || return 1
+  ws az repos pr policy list --id "$number" --org "$organization" --output json |
+    jq -r 'map("check \(.configuration.id) \(.configuration.type.displayName)\(if .configuration.settings.displayName then " " + .configuration.settings.displayName else "" end): \(.status)") | sort | .[]'
+}
+
+snapshot() {
+  if [[ "$url" =~ $github_pattern ]]; then
+    github_snapshot "${BASH_REMATCH[1]}/${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
+  elif [[ "$url" =~ $azure_pattern ]]; then
+    azure_snapshot "https://dev.azure.com/${BASH_REMATCH[1]}" "${BASH_REMATCH[4]}"
+  else
+    echo "not a GitHub or Azure DevOps pull request URL: $url" >&2
+    return 64
+  fi
+}
+
+if [ -z "$url" ]; then
+  echo "$usage" >&2
+  exit 64
+fi
+
+if [ -z "$on" ] && [ -z "$match" ]; then
+  on="any"
+fi
+for event in ${on//,/ }; do
+  case "$event" in
+    any|checks-done|check-failed|review|comment|commit|conflict) ;;
+    *) echo "unknown event for --on: $event" >&2; echo "$usage" >&2; exit 64 ;;
+  esac
+done
+if [ -n "$match" ]; then
+  grep -qE -- "$match" <<<""
+  if [ $? -gt 1 ]; then
+    echo "--match is not a valid regular expression: $match" >&2
+    exit 64
+  fi
+fi
+
+running_status='(QUEUED|IN_PROGRESS|PENDING|WAITING|REQUESTED|EXPECTED|queued|running)'
+failed_status='(FAILURE|TIMED_OUT|CANCELLED|ACTION_REQUIRED|STARTUP_FAILURE|ERROR|rejected|broken)'
+
+changes_since_baseline() {
+  local current="$1"
+  diff <(echo "$baseline") <(echo "$current") | grep '^[<>]' | sed 's/^</was:/; s/^>/now:/'
+}
+
+event_happened() {
+  local event="$1" changes="$2" current="$3"
+  case "$event" in
+    any)
+      return 0 ;;
+    checks-done)
+      if ! grep -qE '^(was|now): check ' <<<"$changes"; then
+        return 1
+      fi
+      if grep -qE "^check .*: $running_status\$" <<<"$current"; then
+        return 1
+      fi
+      return 0 ;;
+    check-failed)
+      grep -qE "^now: check .*: $failed_status\$" <<<"$changes" ;;
+    review)
+      grep -qE '^(was|now): review ' <<<"$changes" ;;
+    comment)
+      grep -qE '^now: comment count:' <<<"$changes" ;;
+    commit)
+      grep -qE '^now: head:' <<<"$changes" ;;
+    conflict)
+      grep -qE '^(was|now): (conflicts|behind base):' <<<"$changes" ;;
+  esac
+}
+
+should_report() {
+  local current="$1" changes new_lines event
+  changes=$(changes_since_baseline "$current")
+  if [ -z "$changes" ]; then
+    return 1
+  fi
+  if grep -qE '^(was|now): state:' <<<"$changes"; then
+    return 0
+  fi
+  for event in ${on//,/ }; do
+    if event_happened "$event" "$changes" "$current"; then
+      return 0
+    fi
+  done
+  if [ -n "$match" ]; then
+    new_lines=$(sed -n 's/^now: //p' <<<"$changes")
+    if [ -n "$new_lines" ] && grep -qE -- "$match" <<<"$new_lines"; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+errors=$(mktemp)
+trap 'rm -f "$errors"' EXIT
+
+if ! baseline=$(snapshot 2>"$errors"); then
+  echo "READ FAILED $url"
+  tail -3 "$errors"
+  exit 2
+fi
+
+if grep -qiE '^state: (merged|closed|completed|abandoned)' <<<"$baseline"; then
+  echo "ALREADY FINISHED $url"
+  echo "$baseline"
+  exit 0
+fi
+
+deadline=$((SECONDS + minutes * 60))
+failures=0
+read_failed() {
+  failures=$((failures + 1))
+  if [ "$failures" -ge 5 ]; then
+    echo "READ FAILED 5 times in a row $url"
+    tail -3 "$errors"
+    exit 2
+  fi
+}
+latest="$baseline"
+while [ "$SECONDS" -lt "$deadline" ]; do
+  sleep "$interval"
+  if ! current=$(snapshot 2>"$errors"); then
+    read_failed
+    continue
+  fi
+  failures=0
+  if ! should_report "$current"; then
+    latest="$current"
+    continue
+  fi
+  sleep 10
+  if ! confirmed=$(snapshot 2>"$errors"); then
+    read_failed
+    continue
+  fi
+  failures=0
+  if ! should_report "$confirmed"; then
+    latest="$confirmed"
+    continue
+  fi
+  echo "CHANGED $url"
+  changes_since_baseline "$confirmed"
+  exit 0
+done
+
+if [ "$latest" = "$baseline" ]; then
+  echo "NO CHANGE in $minutes minutes $url"
+  echo "$baseline"
+else
+  echo "NO MATCH in $minutes minutes $url"
+  echo "these changed, but nothing you asked to wait for:"
+  changes_since_baseline "$latest"
+fi
+exit 0

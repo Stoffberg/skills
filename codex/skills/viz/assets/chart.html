@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>viz</title>
+<style>
+  /* Tokens. In T3 Code they follow the thread theme; alone they fall back to black and white. */
+  :root {
+    --paper: var(--background, #0a0a0a);
+    --ink: var(--foreground, #fafafa);
+    --mid: color-mix(in srgb, var(--ink) 55%, var(--paper));
+    --dim: color-mix(in srgb, var(--ink) 34%, var(--paper));
+    --line: color-mix(in srgb, var(--ink) 15%, var(--paper));
+    --ok: #7bc98a;
+    --bad: #e0605e;
+    --live: #e6b566;
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --mono: "Geist Mono", "GeistMono Nerd Font", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  /* Only for PNG export (open the file with #png). Never set a page background otherwise. */
+  html.standalone { background: #0a0a0a; padding: 40px; zoom: 2; }
+  html.standalone body { margin: 0; }
+
+  .viz {
+    display: grid;
+    gap: 56px;
+    color: var(--ink);
+    font: 13px/1.4 var(--mono);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  .block { min-width: 0; }
+  .block header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    padding-bottom: 12px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--line);
+  }
+  .block h2, .takeaway {
+    margin: 0;
+    font: 700 26px/1.1 var(--sans);
+    letter-spacing: -0.03em;
+  }
+  .takeaway { color: var(--mid); }
+
+  /* Bars: the subject is solid, everything it is compared with is outlined and hatched.
+     Each row is one hit area across label, bar and value; padding, not gaps, separates rows.
+     If values change on a toggle, give the value column a fixed width (as .ranked does)
+     so the bars never move. */
+  .rows {
+    display: grid;
+    grid-template-columns: minmax(0, max-content) minmax(48px, 1fr) max-content;
+    column-gap: 16px;
+  }
+  .row {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: center;
+    padding: 8px 0;
+    cursor: help;
+  }
+  .label { color: var(--mid); font-size: 14px; min-width: 0; }
+  .bar { display: block; box-sizing: border-box; height: 48px; min-width: 3px; }
+  .value {
+    font: 700 52px/1 var(--sans);
+    letter-spacing: -0.04em;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .row.now .label { color: var(--ink); }
+  .row.now .bar { background: var(--ink); }
+  .row.was .bar {
+    border: 1px solid var(--dim);
+    background: repeating-linear-gradient(135deg, transparent 0 6px, var(--dim) 6px 7px);
+  }
+  .row.was .value { color: transparent; -webkit-text-stroke: 1.25px var(--dim); }
+  .rows.focusing .row:not(.picked) > * { opacity: 0.35; }
+
+  /* Ranked list: same language, small. */
+  .rows.ranked { grid-template-columns: minmax(0, max-content) minmax(48px, 1fr) 7ch; }
+  .rows.ranked .row { padding: 5px 0; }
+  .rows.ranked .bar { height: 18px; }
+  .rows.ranked .value { font: 13px/1.4 var(--mono); letter-spacing: 0; color: var(--mid); -webkit-text-stroke: 0; }
+  .rows.ranked .row.now .value { color: var(--ink); }
+
+  /* Trend: one solid line for the subject, a dashed one for what it is compared with. */
+  .trend { display: block; width: 100%; height: auto; overflow: visible; touch-action: pan-y; }
+  .trend text { font: 12px var(--mono); fill: var(--mid); }
+  .trend .baseline { stroke: var(--line); }
+  .trend .line { fill: none; stroke-width: 1.75; stroke-linejoin: round; stroke-linecap: round; }
+  .trend .line.now { stroke: var(--ink); }
+  .trend .line.was { stroke: var(--dim); stroke-dasharray: 3 4; }
+  .trend .end { fill: var(--ink); }
+  .trend text.now { fill: var(--ink); }
+  .trend text.was { fill: var(--dim); }
+  .trend .cursor { stroke: var(--ink); }
+  .trend .hit { fill: transparent; cursor: crosshair; }
+
+  /* Slice picker for several comparable views in one block. Same box active or not. */
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .controls button {
+    padding: 6px 12px; border: 1px solid var(--dim); border-radius: 0;
+    background: none; color: var(--mid); font: inherit; white-space: pre; cursor: pointer;
+  }
+  .controls button.active { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  :focus { outline: none; }
+  :focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
+
+  /* Tooltip: floats above the page, never takes space, never catches the pointer. */
+  .tip {
+    position: fixed; left: 0; top: 0; z-index: 10;
+    max-width: 300px; padding: 8px 10px;
+    border: 1px solid var(--dim); background: var(--paper);
+    color: var(--mid); font: 12px/1.5 var(--mono);
+    pointer-events: none;
+  }
+  .tip[hidden] { display: none; }
+  .tip b { color: var(--ink); font-weight: 400; }
+</style>
+</head>
+<body>
+<main class="viz">
+
+  <!-- Before and after. Keep to two or three rows. Bar widths come from data-value;
+       data-tip is the tooltip (HTML), or the label and value are used. -->
+  <section class="block">
+    <header><h2>Cold start</h2><p class="takeaway">7× faster</p></header>
+    <div class="rows">
+      <div class="row was" data-tip="<b>v1</b><br>840 ms median over 200 starts"><span class="label">v1</span><i class="bar" data-value="840"></i><b class="value">840 ms</b></div>
+      <div class="row now" data-tip="<b>v2</b><br>120 ms median over 200 starts"><span class="label">v2</span><i class="bar" data-value="120"></i><b class="value">120 ms</b></div>
+    </div>
+  </section>
+
+  <!-- Change over time. Data lives in the script at the bottom.
+       Several comparable slices? Add <div class="controls"> with one button per slice
+       above the svg and redraw from the chosen slice; keep every slice the same height. -->
+  <section class="block">
+    <header><h2>p95 latency</h2><p class="takeaway">−57% in 12 weeks</p></header>
+    <svg class="trend" tabindex="0" viewBox="0 0 712 212" role="img" aria-label="p95 latency, this quarter against last; arrow keys step through weeks"></svg>
+  </section>
+
+  <!-- Ranking. One row is the subject; the rest are context. -->
+  <section class="block">
+    <header><h2>Build time by package</h2><p class="takeaway">api is half of it</p></header>
+    <div class="rows ranked">
+      <div class="row now"><span class="label">api</span><i class="bar" data-value="212"></i><b class="value">212 s</b></div>
+      <div class="row was"><span class="label">web</span><i class="bar" data-value="96"></i><b class="value">96 s</b></div>
+      <div class="row was"><span class="label">worker</span><i class="bar" data-value="61"></i><b class="value">61 s</b></div>
+      <div class="row was"><span class="label">shared</span><i class="bar" data-value="38"></i><b class="value">38 s</b></div>
+    </div>
+  </section>
+
+</main>
+<div class="tip" id="tip" role="tooltip" hidden></div>
+<script>
+  if (location.hash === '#png') document.documentElement.classList.add('standalone');
+
+  /* Tooltip: one box for the page. 14px off the pointer, flips to stay in the viewport,
+     position: fixed so it never moves the layout. Closes on leave, outside tap, scroll, Esc. */
+  const tip = document.getElementById('tip');
+  const leaveHandlers = [];
+  let tipOwner = null;
+  function showTip(html, x, y, owner) {
+    tip.innerHTML = html;
+    tip.hidden = false;
+    tipOwner = owner;
+    const gap = 14;
+    let left = x + gap;
+    if (left + tip.offsetWidth > window.innerWidth - 8) left = x - gap - tip.offsetWidth;
+    let top = y + gap;
+    if (top + tip.offsetHeight > window.innerHeight - 8) top = y - gap - tip.offsetHeight;
+    tip.style.transform = 'translate(' + Math.max(8, left) + 'px,' + Math.max(8, top) + 'px)';
+  }
+  function hideTip(owner) {
+    if (owner && owner !== tipOwner) return;
+    tip.hidden = true;
+    tipOwner = null;
+  }
+  function closeAll() { hideTip(); for (const done of leaveHandlers) done(); }
+  document.addEventListener('pointerdown', (event) => { if (!event.target.closest('[data-tip-target]')) closeAll(); });
+  window.addEventListener('scroll', () => hideTip(), { passive: true });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeAll(); });
+
+  // Hover follows the pointer, a tap shows it where tapped, keyboard focus anchors it under the element.
+  function bindTip(target, content, onEnter, onLeave) {
+    target.dataset.tipTarget = '';
+    if (onLeave) leaveHandlers.push(onLeave);
+    const open = (event) => { if (onEnter) onEnter(); showTip(content(), event.clientX, event.clientY, target); };
+    target.addEventListener('pointerenter', open);
+    target.addEventListener('pointermove', open);
+    target.addEventListener('pointerdown', open);
+    target.addEventListener('pointerleave', (event) => {
+      if (event.pointerType !== 'mouse') return;
+      hideTip(target);
+      if (onLeave) onLeave();
+    });
+    target.addEventListener('focus', () => {
+      if (!target.matches(':focus-visible')) return;
+      if (onEnter) onEnter();
+      const box = target.getBoundingClientRect();
+      showTip(content(), box.left + Math.min(box.width, 40), box.bottom, target);
+    });
+    target.addEventListener('blur', () => { hideTip(target); if (onLeave) onLeave(); });
+  }
+
+  // Bars share one scale per block and always start at zero.
+  // Rows: hover, focus or tap one; the others dim and the tooltip gives its numbers.
+  for (const rows of document.querySelectorAll('.rows')) {
+    const bars = [...rows.querySelectorAll('.bar')];
+    const largest = Math.max(...bars.map((bar) => Number(bar.dataset.value)));
+    for (const bar of bars) {
+      bar.style.width = (Number(bar.dataset.value) / largest) * 100 + '%';
+    }
+    const allRows = [...rows.querySelectorAll('.row')];
+    for (const row of allRows) {
+      row.tabIndex = 0;
+      bindTip(
+        row,
+        () => row.dataset.tip || '<b>' + row.querySelector('.label').textContent + '</b><br>' + row.querySelector('.value').textContent,
+        () => { rows.classList.add('focusing'); for (const other of allRows) other.classList.toggle('picked', other === row); },
+        () => rows.classList.remove('focusing'),
+      );
+    }
+  }
+
+  // Trend data: equal-length series, oldest first.
+  const trend = {
+    now: [420, 415, 398, 370, 352, 310, 288, 262, 240, 214, 196, 180],
+    was: [431, 428, 440, 425, 433, 419, 427, 436, 422, 430, 424, 429],
+    nowName: 'this quarter',
+    wasName: 'last quarter',
+    firstTick: 'week 1',
+    lastTick: 'week 12',
+    format: (value) => value + ' ms',
+    pointName: (index) => 'week ' + (index + 1),
+  };
+
+  function drawTrend(svg, data) {
+    const plot = { left: 0, right: 560, top: 12, bottom: 180 };
+    const largest = Math.max(...data.now, ...data.was);
+    const xOf = (index, count) => plot.left + ((plot.right - plot.left) * index) / (count - 1);
+    const yOf = (value) => plot.bottom - ((plot.bottom - plot.top) * value) / largest;
+    const pointsOf = (values) =>
+      values.map((value, index) => xOf(index, values.length).toFixed(1) + ',' + yOf(value).toFixed(1)).join(' ');
+
+    const lastNow = data.now[data.now.length - 1];
+    const lastWas = data.was[data.was.length - 1];
+    let nowLabelY = yOf(lastNow) + 4;
+    let wasLabelY = yOf(lastWas) + 4;
+    const minimumGap = 18;
+    if (Math.abs(nowLabelY - wasLabelY) < minimumGap) {
+      if (nowLabelY < wasLabelY) wasLabelY = nowLabelY + minimumGap;
+      else nowLabelY = wasLabelY + minimumGap;
+    }
+
+    svg.innerHTML =
+      '<line class="baseline" x1="' + plot.left + '" x2="' + plot.right + '" y1="' + plot.bottom + '" y2="' + plot.bottom + '"/>' +
+      '<polyline class="line was" points="' + pointsOf(data.was) + '"/>' +
+      '<polyline class="line now" points="' + pointsOf(data.now) + '"/>' +
+      '<circle class="end" r="3.5" cx="' + plot.right + '" cy="' + yOf(lastNow) + '"/>' +
+      '<text class="was" x="' + (plot.right + 12) + '" y="' + wasLabelY + '">' + data.format(lastWas) + ' ' + data.wasName + '</text>' +
+      '<text class="now" x="' + (plot.right + 12) + '" y="' + nowLabelY + '">' + data.format(lastNow) + ' ' + data.nowName + '</text>' +
+      '<text x="' + plot.left + '" y="' + (plot.bottom + 22) + '">' + data.firstTick + '</text>' +
+      '<text x="' + plot.right + '" y="' + (plot.bottom + 22) + '" text-anchor="end">' + data.lastTick + '</text>' +
+      '<line class="cursor" y1="' + plot.top + '" y2="' + plot.bottom + '" visibility="hidden"/>' +
+      // One transparent hit rect on top of everything, 8px past the plot on each side.
+      '<rect class="hit" x="' + (plot.left - 8) + '" y="0" width="' + (plot.right - plot.left + 16) + '" height="' + (plot.bottom + 8) + '"/>';
+    return { plot, xOf, count: data.now.length };
+  }
+
+  // Trend cursor: follows the pointer and taps (x picks the nearest point, clamped);
+  // ← → step it, Esc clears. The tooltip carries the numbers.
+  function makeTrendInteractive(svg, data) {
+    const { plot, xOf, count } = drawTrend(svg, data);
+    const cursor = svg.querySelector('.cursor');
+    let index = null;
+    const pointTip = (i) => '<b>' + data.pointName(i) + '</b><br>' + data.nowName + ' <b>' + data.format(data.now[i]) + '</b><br>' + data.wasName + ' ' + data.format(data.was[i]);
+    function moveCursor(next) {
+      index = next;
+      if (index === null) return cursor.setAttribute('visibility', 'hidden');
+      const x = xOf(index, count);
+      cursor.setAttribute('x1', x);
+      cursor.setAttribute('x2', x);
+      cursor.setAttribute('visibility', 'visible');
+    }
+    function indexAt(event) {
+      const box = svg.getBoundingClientRect();
+      const x = (event.clientX - box.left) * (svg.viewBox.baseVal.width / box.width);
+      const step = (plot.right - plot.left) / (count - 1);
+      return Math.min(count - 1, Math.max(0, Math.round((x - plot.left) / step)));
+    }
+    function onPointer(event) {
+      if (!event.target.classList.contains('hit')) return;
+      moveCursor(indexAt(event));
+      showTip(pointTip(index), event.clientX, event.clientY, svg);
+    }
+    svg.dataset.tipTarget = '';
+    leaveHandlers.push(() => moveCursor(null));
+    svg.addEventListener('pointermove', onPointer);
+    svg.addEventListener('pointerdown', onPointer);
+    svg.addEventListener('pointerout', (event) => {
+      if (event.pointerType !== 'mouse' || !event.target.classList.contains('hit')) return;
+      moveCursor(null);
+      hideTip(svg);
+    });
+    svg.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      const delta = event.key === 'ArrowLeft' ? -1 : 1;
+      const from = index === null ? (delta > 0 ? -1 : count) : index;
+      moveCursor(Math.min(count - 1, Math.max(0, from + delta)));
+      const box = cursor.getBoundingClientRect();
+      showTip(pointTip(index), box.left, box.top + box.height / 3, svg);
+    });
+    svg.addEventListener('blur', () => { moveCursor(null); hideTip(svg); });
+  }
+
+  makeTrendInteractive(document.querySelector('.trend'), trend);
+</script>
+</body>
+</html>

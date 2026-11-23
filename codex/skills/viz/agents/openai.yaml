@@ -1,0 +1,6 @@
+interface:
+  display_name: "Viz"
+  short_description: "House style for charts, diagrams, animated explainers and PR maps"
+  default_prompt: "Use $viz to draw this as a chart or diagram in the house style."
+policy:
+  allow_implicit_invocation: true

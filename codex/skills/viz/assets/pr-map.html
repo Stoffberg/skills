@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open PRs</title>
+<style>
+  :root {
+    --paper: var(--background, #0a0a0a);
+    --ink: var(--foreground, #fafafa);
+    --mid: color-mix(in srgb, var(--ink) 55%, var(--paper));
+    --dim: color-mix(in srgb, var(--ink) 34%, var(--paper));
+    --line: color-mix(in srgb, var(--ink) 15%, var(--paper));
+    --ok: #7bc98a;
+    --bad: #e0605e;
+    --live: #e6b566;
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --mono: "Geist Mono", "GeistMono Nerd Font", ui-monospace, "SF Mono", Menlo, monospace;
+    --hatch: repeating-linear-gradient(45deg, var(--dim) 0 1px, transparent 1px 7px);
+  }
+  html.standalone { background: #0a0a0a; padding: 40px; zoom: 2; }
+  html.standalone body { margin: 0; }
+
+  .viz {
+    position: relative;
+    display: grid;
+    gap: 48px;
+    color: var(--ink);
+    font: 12px/1.45 var(--mono);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  .block header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    padding-bottom: 12px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .block h2, .takeaway {
+    margin: 0;
+    font: 700 24px/1.1 var(--sans);
+    letter-spacing: -0.03em;
+  }
+  .takeaway { color: var(--mid); text-align: right; }
+
+  .lane { display: grid; grid-template-columns: 84px 1fr; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .repo { color: var(--mid); }
+  .chain { display: flex; flex-wrap: wrap; align-items: center; row-gap: 8px; }
+  .n {
+    padding: 4px 8px;
+    border: 1px solid var(--dim);
+    color: var(--ink);
+    white-space: nowrap;
+    text-decoration: none;
+  }
+  a.n { cursor: pointer; }
+  a.n:hover, a.n:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
+  .n.start { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .n.wait { background: var(--hatch); }
+  .n.bad { border-color: var(--bad); color: var(--bad); }
+  .n.plan { border-style: dashed; color: var(--dim); }
+  .n.step { border-color: transparent; color: var(--dim); padding: 4px 2px; }
+  .w { display: inline-block; width: 12px; height: 1px; background: var(--dim); }
+
+  .facts { margin-top: 14px; display: grid; gap: 4px; }
+  .facts p { margin: 0; color: var(--mid); }
+  .facts b { color: var(--ink); font-weight: 400; }
+
+  .tip {
+    position: absolute;
+    z-index: 2;
+    width: 300px;
+    max-width: calc(100% - 2px);
+    box-sizing: border-box;
+    padding: 12px;
+    border: 1px solid var(--dim);
+    background: var(--paper);
+    pointer-events: none;
+    opacity: 0;
+  }
+  .tip.on { opacity: 1; }
+  .tip .id { color: var(--mid); }
+  .tip .title { margin: 4px 0 10px; font: 700 15px/1.25 var(--sans); letter-spacing: -0.01em; color: var(--ink); }
+  .tip .size { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .tip .size b { font: 700 20px/1 var(--sans); letter-spacing: -0.02em; }
+  .tip .bar { display: flex; height: 6px; margin-bottom: 10px; }
+  .tip .bar .add { background: var(--ink); }
+  .tip .bar .del { background: var(--hatch); border: 1px solid var(--dim); box-sizing: border-box; }
+  .tip p { margin: 0 0 2px; color: var(--mid); }
+  .tip p .bad { color: var(--bad); }
+  .tip p .ok { color: var(--ok); }
+  .tip .go { margin-top: 8px; color: var(--ink); }
+</style>
+</head>
+<body>
+<main class="viz" id="viz">
+
+  <!-- One block per mission. Order blocks by blast radius, widest first.
+       Heading = the mission, takeaway = what a mistake reaches.
+       Lanes = repos, nodes in merge order, joined by <i class="w"></i>.
+       Node classes: start = review/merge this first (solid white), wait = blocked on the one before (hatched),
+       bad = conflict / stranded / failing tests (red), plan = not pushed or not written (dashed, no link),
+       step = a release, deploy or dependency note (no box, no link).
+       data-pr="repo#number" must match the keys pr-data.py writes. -->
+  <section class="block">
+    <header><h2>Mission name</h2><p class="takeaway">what a slip reaches</p></header>
+    <div class="lane"><span class="repo">core</span><div class="chain">
+      <a class="n start" data-pr="core#358">#358</a><i class="w"></i><a class="n wait" data-pr="core#359">#359</a><i class="w"></i><a class="n bad" data-pr="core#360">#360 conflict</a>
+    </div></div>
+    <div class="lane"><span class="repo">lz</span><div class="chain"><a class="n start" data-pr="landing-zones#106">#106</a><span class="n step">ships with core #358</span></div></div>
+    <div class="lane"><span class="repo">pdf</span><div class="chain"><span class="n plan">sub-rows · local</span><i class="w"></i><span class="n step">deploy</span></div></div>
+    <div class="facts">
+      <p><b>for</b> · what the PRs achieve together, in one line</p>
+      <p><b>blast radius</b> · what breaks, for whom, if one is wrong; ordering hazards between repos</p>
+      <p><b>owner</b> · you / thread name / person</p>
+    </div>
+  </section>
+
+  <div class="tip" id="tip" role="tooltip"></div>
+</main>
+<script>
+  const PRS = __DATA__;
+  const viz = document.getElementById('viz');
+  const tip = document.getElementById('tip');
+
+  function escapeText(value) {
+    const span = document.createElement('span');
+    span.textContent = value;
+    return span.innerHTML;
+  }
+
+  function checksLine(checks) {
+    if (checks === 'green') return '<span class="ok">green</span>';
+    if (checks.startsWith('failing')) return '<span class="bad">' + escapeText(checks) + '</span>';
+    return escapeText(checks);
+  }
+
+  function stateLine(state) {
+    if (state.startsWith('conflict') || state.startsWith('merged into')) return '<span class="bad">' + escapeText(state) + '</span>';
+    return escapeText(state);
+  }
+
+  function render(pr) {
+    const total = Math.max(pr.a + pr.d, 1);
+    const addShare = (pr.a / total) * 100;
+    return '<div class="id">' + escapeText(pr.repo) + '</div>'
+      + '<div class="title">' + escapeText(pr.t) + '</div>'
+      + '<div class="size"><b>+' + pr.a + '</b><b>−' + pr.d + '</b><span>' + pr.f + ' files</span></div>'
+      + '<div class="bar"><i class="add" style="width:' + addShare + '%"></i><i class="del" style="width:' + (100 - addShare) + '%"></i></div>'
+      + '<p>' + stateLine(pr.s) + '</p>'
+      + '<p>checks · ' + checksLine(pr.c) + '</p>'
+      + '<div class="go">click → diff on GitHub</div>';
+  }
+
+  function place(node) {
+    const box = viz.getBoundingClientRect();
+    const rect = node.getBoundingClientRect();
+    const tipWidth = tip.offsetWidth;
+    const tipHeight = tip.offsetHeight;
+    let left = rect.left - box.left;
+    if (left + tipWidth > box.width) left = box.width - tipWidth;
+    let top = rect.bottom - box.top + 8;
+    const roomBelow = window.innerHeight - rect.bottom;
+    if (roomBelow < tipHeight + 16 && rect.top - box.top > tipHeight + 8) top = rect.top - box.top - tipHeight - 8;
+    tip.style.left = Math.max(left, 0) + 'px';
+    tip.style.top = top + 'px';
+  }
+
+  function show(node) {
+    const pr = PRS[node.dataset.pr];
+    if (!pr) return;
+    tip.innerHTML = render(pr);
+    tip.classList.add('on');
+    place(node);
+  }
+
+  function hide() { tip.classList.remove('on'); }
+
+  for (const node of document.querySelectorAll('a.n[data-pr]')) {
+    const pr = PRS[node.dataset.pr];
+    if (!pr) continue;
+    node.href = pr.u + '/files';
+    node.target = '_blank';
+    node.rel = 'noopener';
+    node.addEventListener('mouseenter', () => show(node));
+    node.addEventListener('focus', () => show(node));
+    node.addEventListener('mouseleave', hide);
+    node.addEventListener('blur', hide);
+  }
+</script>
+</body>
+</html>

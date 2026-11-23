@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>viz</title>
+<style>
+  /* Tokens. In T3 Code they follow the thread theme; alone they fall back to black and white. */
+  :root {
+    --paper: var(--background, #0a0a0a);
+    --ink: var(--foreground, #fafafa);
+    --mid: color-mix(in srgb, var(--ink) 55%, var(--paper));
+    --dim: color-mix(in srgb, var(--ink) 34%, var(--paper));
+    --line: color-mix(in srgb, var(--ink) 15%, var(--paper));
+    --ok: #7bc98a;
+    --bad: #e0605e;
+    --live: #e6b566;
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --mono: "Geist Mono", "GeistMono Nerd Font", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  /* Only for PNG export (open the file with #png). Never set a page background otherwise. */
+  html.standalone { background: #0a0a0a; padding: 40px; zoom: 2; }
+  html.standalone body { margin: 0; }
+
+  /* Same block as a chart: heading left, takeaway right, hairline, then the marks. */
+  .viz {
+    display: grid;
+    gap: 56px;
+    color: var(--ink);
+    font: 13px/1.4 var(--mono);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  .block header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    padding-bottom: 12px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--line);
+  }
+  .block h2, .takeaway {
+    margin: 0;
+    font: 700 26px/1.1 var(--sans);
+    letter-spacing: -0.03em;
+  }
+  .takeaway { color: var(--mid); }
+
+  /* Same marks as a chart: square corners, solid for the subject, hatched for what waits. */
+  .flow { display: block; width: 100%; height: auto; overflow: visible; }
+  .flow text { font: 13px var(--mono); fill: var(--mid); }
+  .flow .term { fill: var(--ink); }
+  .flow .node { fill: none; stroke: var(--dim); }
+  .flow .node.waiting { fill: url(#hatch); }
+  .flow .wire { fill: none; stroke: var(--dim); }
+  .flow .mark { fill: var(--paper); stroke: var(--dim); }
+  .flow .token { fill: var(--ink); }
+
+  /* Things that switch on during the loop. Solid white is work happening or done. */
+  .flow .node.busy.on { fill: var(--ink); stroke: var(--ink); }
+  .flow .mark.lands.on { fill: var(--ink); stroke: var(--ink); }
+  /* Colour reports state and nothing else. */
+  .flow .token.bad { fill: var(--bad); }
+  .flow text.flash { fill: var(--bad); opacity: 0; }
+  .flow text.flash.on { opacity: 1; }
+
+  /* Planned work: dashed outline, dim text. */
+  .flow .planned .node, .flow .planned .wire { stroke-dasharray: 3 3; }
+  .flow .planned text { fill: var(--dim); }
+
+  .block footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin-top: 24px;
+    color: var(--mid);
+  }
+  .controls { display: flex; gap: 8px; }
+  .controls button {
+    padding: 6px 12px;
+    border: 1px solid var(--dim);
+    border-radius: 0;
+    background: none;
+    color: var(--mid);
+    font: inherit;
+    cursor: pointer;
+  }
+  .controls button.active { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+  /* Interaction: a part is a group with a padded transparent hit rect over its label and node.
+     Hover, tap or tab it for a tooltip. Nothing on the page moves. */
+  .block { min-width: 0; }
+  .flow .part { cursor: help; }
+  .flow .hit { fill: transparent; }
+  .flow .part.picked .node { stroke: var(--ink); }
+  :focus { outline: none; }
+  :focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
+  .controls button { white-space: pre; }
+  .tip {
+    position: fixed; left: 0; top: 0; z-index: 10;
+    max-width: 300px; padding: 8px 10px;
+    border: 1px solid var(--dim); background: var(--paper);
+    color: var(--mid); font: 12px/1.5 var(--mono);
+    pointer-events: none;
+  }
+  .tip[hidden] { display: none; }
+  .tip b { color: var(--ink); font-weight: 400; }
+</style>
+</head>
+<body>
+<main class="viz">
+
+  <section class="block">
+    <header><h2>How a job lands</h2><p class="takeaway">≈ 2 min each</p></header>
+    <svg class="flow" viewBox="0 0 712 204" role="img" aria-label="Jobs go from three sources through a queue to one worker, then land on main or go back to their source">
+      <defs>
+        <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0.5" y1="0" x2="0.5" y2="7" stroke="var(--dim)"/>
+        </pattern>
+      </defs>
+
+      <!-- Wires first, so nodes and tokens sit on top. A token names the wire it rides. -->
+      <path id="wire-a" class="wire" d="M56 40 H126 V80 H196"/>
+      <path id="wire-b" class="wire" d="M56 80 H196"/>
+      <path id="wire-c" class="wire" d="M56 120 H126 V80 H196"/>
+      <path id="wire-run" class="wire" d="M248 80 H400"/>
+      <path id="wire-main" class="wire" d="M488 80 H708"/>
+      <path id="wire-back" class="wire" d="M444 112 V172 H4 V40 H16"/>
+
+      <text x="16" y="14">sources</text>
+      <rect class="node" x="16" y="28" width="40" height="24"/>
+      <rect class="node" x="16" y="68" width="40" height="24"/>
+      <rect class="node" x="16" y="108" width="40" height="24"/>
+
+      <g class="part" tabindex="0" data-tip="<b>queue</b><br>jobs wait here in arrival order">
+        <rect class="hit" x="190" y="0" width="150" height="138"/>
+        <text x="196" y="14"><tspan class="term">queue</tspan> · in order</text>
+        <rect class="node waiting" x="196" y="28" width="52" height="104"/>
+      </g>
+
+      <g class="part" tabindex="0" data-tip="<b>worker</b><br>runs one job at a time">
+        <rect class="hit" x="394" y="0" width="104" height="118"/>
+        <text x="400" y="14"><tspan class="term">worker</tspan> · one job at a time</text>
+        <rect class="node busy" data-on="3.5-5.5 7.5-9" x="400" y="48" width="88" height="64"/>
+      </g>
+
+      <text x="504" y="62"><tspan class="term">main</tspan> · where jobs land</text>
+      <rect class="mark" x="516" y="75" width="10" height="10"/>
+      <rect class="mark" x="548" y="75" width="10" height="10"/>
+      <rect class="mark" x="580" y="75" width="10" height="10"/>
+      <rect class="mark" x="612" y="75" width="10" height="10"/>
+      <rect class="mark" x="644" y="75" width="10" height="10"/>
+      <rect class="mark lands" data-on="6.5-12" x="676" y="75" width="10" height="10"/>
+
+      <text x="16" y="196">failed · back to the source that sent it</text>
+      <text x="456" y="146" class="flash" data-on="9-11.5">failed</text>
+
+      <!-- Tokens ride a wire between data-from and data-to, in seconds inside the loop.
+           Anything else switches on during its data-on windows, such as "3.5-5.5 7.5-9". -->
+      <rect class="token" data-wire="#wire-a" data-from="0" data-to="2" width="10" height="10"/>
+      <rect class="token" data-wire="#wire-run" data-from="2" data-to="3.5" width="10" height="10"/>
+      <rect class="token" data-wire="#wire-main" data-from="5.5" data-to="6.5" width="10" height="10"/>
+      <rect class="token" data-wire="#wire-c" data-from="4" data-to="6" width="10" height="10"/>
+      <rect class="token" data-wire="#wire-run" data-from="6" data-to="7.5" width="10" height="10"/>
+      <rect class="token bad" data-wire="#wire-back" data-from="9" data-to="11.5" width="10" height="10"/>
+    </svg>
+    <footer>
+      <span>one loop ≈ 10 minutes of traffic</span>
+      <div class="controls">
+        <button type="button" id="pause">Pause</button>
+        <button type="button" class="active" data-speed="1">1×</button>
+        <button type="button" data-speed="0.25">¼×</button>
+      </div>
+    </footer>
+  </section>
+
+  <!-- A stage that does not exist yet gets its own block, drawn dashed. -->
+  <section class="block">
+    <header><h2>Checks before the queue</h2><p class="takeaway">not built</p></header>
+    <svg class="flow" viewBox="0 0 712 28" role="img" aria-label="Planned checks before a job is queued: lint, build, test, ship">
+      <defs>
+        <marker id="arrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M0 0 L6 3 L0 6 Z" fill="var(--dim)"/>
+        </marker>
+      </defs>
+      <g class="planned">
+        <rect class="node" x="0.5" y="0.5" width="52" height="26"/><text x="26" y="18" text-anchor="middle">lint</text>
+        <path class="wire" d="M57 13.5 H73" marker-end="url(#arrow)"/>
+        <rect class="node" x="77.5" y="0.5" width="60" height="26"/><text x="107" y="18" text-anchor="middle">build</text>
+        <path class="wire" d="M142 13.5 H158" marker-end="url(#arrow)"/>
+        <rect class="node" x="162.5" y="0.5" width="52" height="26"/><text x="188" y="18" text-anchor="middle">test</text>
+        <path class="wire" d="M219 13.5 H235" marker-end="url(#arrow)"/>
+        <rect class="node" x="239.5" y="0.5" width="52" height="26"/><text x="265" y="18" text-anchor="middle">ship</text>
+      </g>
+    </svg>
+  </section>
+
+</main>
+<script>
+  if (location.hash === '#png') document.documentElement.classList.add('standalone');
+
+  // Tooltip: one box for the page, 14px off the pointer, flipped to stay in the viewport,
+  // position: fixed so nothing moves. Closes on leave, outside tap, scroll or Esc.
+  const tip = document.createElement('div');
+  tip.className = 'tip';
+  tip.setAttribute('role', 'tooltip');
+  tip.hidden = true;
+  document.body.appendChild(tip);
+  function showTip(html, x, y) {
+    tip.innerHTML = html;
+    tip.hidden = false;
+    let left = x + 14;
+    if (left + tip.offsetWidth > window.innerWidth - 8) left = x - 14 - tip.offsetWidth;
+    let top = y + 14;
+    if (top + tip.offsetHeight > window.innerHeight - 8) top = y - 14 - tip.offsetHeight;
+    tip.style.transform = 'translate(' + Math.max(8, left) + 'px,' + Math.max(8, top) + 'px)';
+  }
+  const parts = [...document.querySelectorAll('.flow .part')];
+  function closeTip() {
+    tip.hidden = true;
+    for (const part of parts) part.classList.remove('picked');
+  }
+  for (const part of parts) {
+    const open = (event) => { part.classList.add('picked'); showTip(part.dataset.tip, event.clientX, event.clientY); };
+    part.addEventListener('pointerenter', open);
+    part.addEventListener('pointermove', open);
+    part.addEventListener('pointerdown', open);
+    part.addEventListener('pointerleave', (event) => { if (event.pointerType === 'mouse') closeTip(); });
+    part.addEventListener('focus', () => {
+      if (!part.matches(':focus-visible')) return;
+      part.classList.add('picked');
+      const box = part.getBoundingClientRect();
+      showTip(part.dataset.tip, box.left + 40, box.bottom);
+    });
+    part.addEventListener('blur', closeTip);
+  }
+  document.addEventListener('pointerdown', (event) => { if (!event.target.closest('.part')) closeTip(); });
+  window.addEventListener('scroll', closeTip, { passive: true });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeTip(); });
+
+  // One loop of the animation, in seconds at 1×. Say what a loop stands for in the footer.
+  const LOOP_SECONDS = 12;
+
+  const tokens = [...document.querySelectorAll('.token')].map((element) => {
+    const wire = document.querySelector(element.dataset.wire);
+    return {
+      element,
+      wire,
+      length: wire.getTotalLength(),
+      from: Number(element.dataset.from),
+      to: Number(element.dataset.to),
+      halfWidth: Number(element.getAttribute('width')) / 2,
+      halfHeight: Number(element.getAttribute('height')) / 2,
+    };
+  });
+  const timedElements = [...document.querySelectorAll('[data-on]')].map((element) => ({
+    element,
+    windows: element.dataset.on.split(' ').map((span) => span.split('-').map(Number)),
+  }));
+
+  function draw(seconds) {
+    for (const token of tokens) {
+      const visible = seconds >= token.from && seconds < token.to;
+      token.element.style.display = visible ? '' : 'none';
+      if (!visible) continue;
+      const progress = (seconds - token.from) / (token.to - token.from);
+      const point = token.wire.getPointAtLength(progress * token.length);
+      token.element.setAttribute('x', point.x - token.halfWidth);
+      token.element.setAttribute('y', point.y - token.halfHeight);
+    }
+    for (const timed of timedElements) {
+      const active = timed.windows.some(([from, to]) => seconds >= from && seconds < to);
+      timed.element.classList.toggle('on', active);
+    }
+  }
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let paused = reducedMotion;
+  let speed = 1;
+  let elapsed = 1;
+  let previousFrame = performance.now();
+
+  function frame(now) {
+    if (!paused) {
+      elapsed = (elapsed + ((now - previousFrame) / 1000) * speed) % LOOP_SECONDS;
+    }
+    previousFrame = now;
+    draw(elapsed);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  const pauseButton = document.getElementById('pause');
+  function showPauseState() {
+    pauseButton.textContent = paused ? 'Play ' : 'Pause'; // same length, so the button never resizes
+  }
+  pauseButton.addEventListener('click', () => {
+    paused = !paused;
+    showPauseState();
+  });
+  showPauseState();
+
+  const speedButtons = [...document.querySelectorAll('[data-speed]')];
+  for (const button of speedButtons) {
+    button.addEventListener('click', () => {
+      speed = Number(button.dataset.speed);
+      for (const other of speedButtons) other.classList.toggle('active', other === button);
+    });
+  }
+</script>
+</body>
+</html>

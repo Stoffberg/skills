@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How a change lands</title>
+<style>
+  /* Tokens and marks from codex/skills/viz/assets/flow.html. */
+  :root {
+    --paper: var(--background, #0a0a0a);
+    --ink: var(--foreground, #fafafa);
+    --mid: color-mix(in srgb, var(--ink) 55%, var(--paper));
+    --dim: color-mix(in srgb, var(--ink) 34%, var(--paper));
+    --line: color-mix(in srgb, var(--ink) 15%, var(--paper));
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --mono: "Geist Mono", "GeistMono Nerd Font", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  /* Only for PNG export (open the file with #png). */
+  html.standalone { background: #0a0a0a; padding: 40px; zoom: 2; }
+  html.standalone body { margin: 0; }
+
+  .viz {
+    display: grid;
+    color: var(--ink);
+    font: 13px/1.4 var(--mono);
+    -webkit-font-smoothing: antialiased;
+  }
+  .block header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    padding-bottom: 12px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--line);
+  }
+  .block h2, .takeaway {
+    margin: 0;
+    font: 700 26px/1.1 var(--sans);
+    letter-spacing: -0.03em;
+  }
+  .takeaway { color: var(--mid); }
+
+  .flow { display: block; width: 100%; height: auto; overflow: visible; }
+  .flow text { font: 13px var(--mono); fill: var(--mid); }
+  .flow .term { fill: var(--ink); }
+  .flow .node { fill: none; stroke: var(--dim); }
+  .flow .node.waiting { fill: url(#hatch); }
+  .flow .node.done { fill: var(--ink); stroke: var(--ink); }
+  .flow .on-done { fill: var(--paper); }
+  .flow .backing { fill: var(--paper); }
+  .flow .wire { fill: none; stroke: var(--dim); }
+</style>
+</head>
+<body>
+<main class="viz">
+  <section class="block">
+    <header><h2>How a change lands</h2><p class="takeaway">nobody watching</p></header>
+    <svg class="flow" viewBox="0 0 708 246" role="img" aria-label="You say full send and leave. Claude scopes, builds, proves, reviews, files, babysits and merges. Through T3 Code, GPT Sol reviews the change and a watcher wakes Claude when the pull request changes. You come back to a report.">
+      <defs>
+        <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0.5" y1="0" x2="0.5" y2="7" stroke="var(--dim)"/>
+        </pattern>
+      </defs>
+
+      <!-- Wires first, so nodes sit on top. -->
+      <path class="wire" d="M42 56 V112"/>
+      <path class="wire" d="M84 128 H104"/>
+      <path class="wire" d="M188 128 H208"/>
+      <path class="wire" d="M292 128 H312"/>
+      <path class="wire" d="M396 128 H416"/>
+      <path class="wire" d="M500 128 H520"/>
+      <path class="wire" d="M604 128 H624"/>
+      <path class="wire" d="M666 112 V56"/>
+      <path class="wire" d="M340 144 V190"/>
+      <path class="wire" d="M368 144 V190"/>
+      <path class="wire" d="M562 144 V190"/>
+
+      <!-- You: one sentence in, one report out. -->
+      <text x="0" y="14"><tspan class="term">you</tspan> · say "full send", then leave</text>
+      <rect class="node" x="0.5" y="26.5" width="84" height="30"/>
+      <text class="term" x="42" y="46" text-anchor="middle">full send</text>
+      <rect class="node" x="624.5" y="26.5" width="84" height="30"/>
+      <text class="term" x="666" y="46" text-anchor="middle">report</text>
+
+      <!-- Claude: the seven steps, in order. Hatched waits, solid white is the result. -->
+      <text x="104" y="98"><tspan class="term">Claude</tspan> · does the work</text>
+      <rect class="node" x="0.5" y="112.5" width="84" height="32"/>
+      <text class="term" x="42" y="133" text-anchor="middle">scope</text>
+      <rect class="node" x="104.5" y="112.5" width="84" height="32"/>
+      <text class="term" x="146" y="133" text-anchor="middle">build</text>
+      <rect class="node" x="208.5" y="112.5" width="84" height="32"/>
+      <text class="term" x="250" y="133" text-anchor="middle">prove</text>
+      <rect class="node" x="312.5" y="112.5" width="84" height="32"/>
+      <text class="term" x="354" y="133" text-anchor="middle">review</text>
+      <rect class="node" x="416.5" y="112.5" width="84" height="32"/>
+      <text class="term" x="458" y="133" text-anchor="middle">file</text>
+      <rect class="node waiting" x="520.5" y="112.5" width="84" height="32"/>
+      <rect class="backing" x="531" y="120" width="63" height="17"/>
+      <text class="term" x="562" y="133" text-anchor="middle">babysit</text>
+      <rect class="node done" x="624.5" y="112.5" width="84" height="32"/>
+      <text class="on-done" x="666" y="133" text-anchor="middle">merge</text>
+
+      <!-- T3 Code: the two hand-offs Claude cannot do alone. -->
+      <text x="0" y="211"><tspan class="term">T3 Code</tspan> · runs the hand-offs</text>
+      <rect class="node" x="312.5" y="190.5" width="84" height="32"/>
+      <text class="term" x="354" y="211" text-anchor="middle">GPT Sol</text>
+      <text x="312" y="242">reviews, up to 3 rounds</text>
+      <rect class="node" x="520.5" y="190.5" width="84" height="32"/>
+      <text class="term" x="562" y="211" text-anchor="middle">PR watch</text>
+      <text x="520" y="242">wakes it on a change</text>
+    </svg>
+  </section>
+</main>
+<script>
+  if (location.hash === '#png') document.documentElement.classList.add('standalone');
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Writing"
+  short_description: "Final wording for proven PRs, updates and handoffs"
+  default_prompt: "Use $writing as the final pass once the evidence is gathered and this PR, ticket update or handoff is ready to draft."
+policy:
+  allow_implicit_invocation: true
