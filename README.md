@@ -50,10 +50,10 @@ This is my live setup: the skills, global instructions and scripts I run Claude 
 | `council` | [council](claude/skills/council/SKILL.md) | Three reviewers score the work out of ten |
 | `catchup` | [catchup](claude/skills/catchup/SKILL.md) | A ranked, read-only briefing of what needs you |
 | `hill climb` and a goal | [hill-climb](claude/skills/hill-climb/SKILL.md) | Small scored steps. Wins are kept, losses undone |
-| `viz` | [viz](codex/skills/viz/SKILL.md) | A chart or diagram in black, gray and white |
-| `draft a message to` | [writing](codex/skills/writing/SKILL.md) | Short, plain text that waits for your approval |
+| `viz` | [viz](shared/skills/viz/SKILL.md) | A chart or diagram in black, gray and white |
+| `draft a message to` | [writing](shared/skills/writing/SKILL.md) | Short, plain text that waits for your approval |
 
-The first five need T3 Code and both subscriptions. [beam](codex/skills/beam/SKILL.md), [hook](codex/skills/hook/SKILL.md), [keep](codex/skills/keep/SKILL.md) and [reach](codex/skills/reach/SKILL.md) teach an agent to use my tools of the same names.
+The first five need T3 Code and both subscriptions. [beam](shared/skills/beam/SKILL.md), [hook](shared/skills/hook/SKILL.md), [keep](shared/skills/keep/SKILL.md) and [reach](shared/skills/reach/SKILL.md) teach an agent to use my tools of the same names.
 
 ## pr-wait
 
@@ -76,12 +76,12 @@ Claude works in a T3 Code thread. T3 starts the GPT Sol reviewer and wakes the t
 
 ## Install
 
-Each skill is a folder with a `SKILL.md`. Link the ones you want into both agents:
+Each skill is a folder with a `SKILL.md`. `claude/` holds the skills only Claude runs, `codex/` the ones only Codex runs, and `shared/` the ones both use. Link the ones you want:
 
 ```sh
 git clone https://github.com/Stoffberg/skills ~/skills
-ln -s ~/skills/codex/skills/viz ~/.codex/skills/viz
-ln -s ~/.codex/skills/viz ~/.claude/skills/viz
+ln -s ~/skills/shared/skills/viz ~/.claude/skills/viz
+ln -s ~/skills/shared/skills/viz ~/.codex/skills/viz
 ```
 
 ## License
