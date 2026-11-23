@@ -10,6 +10,7 @@
 [![Builds with Claude Code](https://img.shields.io/badge/builds%20with-Claude%20Code-111?logo=claude&logoColor=white)](#requirements)
 [![Reviews with Codex](https://img.shields.io/badge/reviews%20with-Codex-111)](#requirements)
 [![macOS](https://img.shields.io/badge/platform-macOS-111?logo=apple&logoColor=white)](#requirements)
+[![License: MIT](https://img.shields.io/badge/license-MIT-111)](./LICENSE)
 
 [Requirements](#requirements) · [Skills](#skills) · [How it works](#how-it-works) · [Install](#install)
 
@@ -83,6 +84,8 @@ ln -s ~/skills/codex/skills/viz ~/.codex/skills/viz
 ln -s ~/.codex/skills/viz ~/.claude/skills/viz
 ```
 
-## Credits
+## License
 
-`hill-climb` builds on [Bil0000/Hill-Climb](https://github.com/Bil0000/Hill-Climb) (MIT). `writing` started from the unslop skill in [cursor/plugins](https://github.com/cursor/plugins).
+[MIT](./LICENSE) © Dirk Beukes. Use anything here.
+
+`hill-climb` builds on [Bil0000/Hill-Climb](https://github.com/Bil0000/Hill-Climb), also MIT, with its licence in the skill's folder. `writing` started from the unslop skill in [cursor/plugins](https://github.com/cursor/plugins).
