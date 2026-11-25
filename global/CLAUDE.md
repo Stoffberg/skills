@@ -35,5 +35,6 @@
 - Never cross workspace credentials or data, and don't work outside the workspace you were started in without explicit approval.
 - Make code changes in a git worktree, never in a repo's main checkout.
 - Stop any server or long-running process you start once you are done, unless I ask to keep it running.
+- Run anything that may take over 2 minutes, logins included, in the background and say what you're waiting on. Never scan `/` or `~`.
 - When auth expires, run the login command yourself (it opens my browser) and tell me in one line what to approve. For web apps, check the in-app browser first; I am usually signed in.
 - When I give you a credential or a fact you will need again, save it unasked: secret in Keychain, pointer in the workspace AGENTS.md.
