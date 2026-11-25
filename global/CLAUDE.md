@@ -27,6 +27,7 @@
 - Claude only: run the `sol-loop` skill on every code change before calling it done or filing/updating a PR. Skip it only for docs, copy, or config-only changes.
 - Prioritise readability over brevity: clear names, explicit control flow and named options; no nested ternaries, dense expressions or premature abstractions.
 - Ask before running a migration or touching production. Dev and staging need no ask.
+- No inline/block comments; use JSDoc only for critical public APIs.
 - Use conventional commit messages.
 
 ## Workspace
