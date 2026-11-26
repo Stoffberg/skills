@@ -53,7 +53,7 @@ This is my live setup: the skills, global instructions and scripts I run Claude 
 | `viz` | [viz](shared/skills/viz/SKILL.md) | A chart or diagram in black, gray and white |
 | `draft a message to` | [writing](shared/skills/writing/SKILL.md) | Short, plain text that waits for your approval |
 
-The first five need T3 Code and both subscriptions. [beam](shared/skills/beam/SKILL.md), [hook](shared/skills/hook/SKILL.md), [keep](shared/skills/keep/SKILL.md) and [reach](shared/skills/reach/SKILL.md) teach an agent to use my tools of the same names.
+The first five need T3 Code and both subscriptions. [beam](shared/skills/beam/SKILL.md), [hook](shared/skills/hook/SKILL.md), [keep](shared/skills/keep/SKILL.md), [reach](shared/skills/reach/SKILL.md) and [site](shared/skills/site/SKILL.md) teach an agent to use my tools of the same names.
 
 ## pr-wait
 
